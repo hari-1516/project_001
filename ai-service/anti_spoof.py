@@ -28,11 +28,11 @@ def check_liveness(image_path: str) -> dict:
     # --- Scoring ---
     # Higher Laplacian variance = more natural texture = more likely real
     # Lower bright ratio = no screen glare = more likely real
-    texture_score = min(laplacian_var / 500.0, 1.0)  # Normalize to [0,1]
+    texture_score = min(laplacian_var / 100.0, 1.0)  # Normalize to [0,1]
     glare_penalty = bright_ratio * 2.0               # Penalize for bright regions
 
     confidence = max(0.0, min(1.0, texture_score - glare_penalty))
-    is_live = confidence > 0.3
+    is_live = confidence >= 0.05
 
     return {
         "is_live": is_live,

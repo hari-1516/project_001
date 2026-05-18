@@ -37,7 +37,7 @@ const registerStudent = async (req, res) => {
 
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/register`, form, {
           headers: { ...form.getHeaders() },
-          timeout: 5000, // Don't wait more than 5s for AI service
+          timeout: 60000, // Increased timeout to 60s for AI service processing
         });
 
         if (aiResponse.data?.embedding) {
