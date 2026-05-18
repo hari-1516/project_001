@@ -1,4 +1,3 @@
-import React from 'react';
 import { formatDate, getPercentageBadge } from '../utils/helpers';
 
 const AttendanceTable = ({ records = [], loading = false }) => {

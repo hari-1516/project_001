@@ -2,9 +2,10 @@
   "name": "server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --check app.js && node --check controllers/attendanceController.js && node --check controllers/authController.js && node --check controllers/classController.js && node --check controllers/notificationController.js && node --check controllers/reportController.js && node --check controllers/studentController.js",
+    "start": "node app.js"
   },
   "keywords": [],
   "author": "",

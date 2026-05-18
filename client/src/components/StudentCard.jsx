@@ -1,5 +1,4 @@
-import React from 'react';
-import { User, BookOpen } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { getPercentageBadge } from '../utils/helpers';
 
 const StudentCard = ({ student, percentage }) => {

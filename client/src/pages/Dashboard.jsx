@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Users, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
 import { useAttendance } from '../context/AttendanceContext';

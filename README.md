@@ -1,16 +1,86 @@
-# React + Vite
+# VisionAttend AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+VisionAttend AI is a smart attendance system with a React frontend, an Express/MongoDB API, and a FastAPI face-recognition service powered by DeepFace.
 
-Currently, two official plugins are available:
+## Project Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```text
+client/      React + Vite frontend
+server/      Express API, MongoDB models, auth, attendance, reports
+ai-service/  FastAPI service for face registration and recognition
+```
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js and npm
+- Python 3.10+
+- MongoDB or MongoDB Atlas
 
-## Expanding the ESLint configuration
+## Environment Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Create local env files from the examples:
+
+```bash
+copy server\.env.example server\.env
+copy ai-service\.env.example ai-service\.env
+copy client\.env.example client\.env
+```
+
+Update `MONGO_URI` and `JWT_SECRET` before running the backend.
+
+## Run Locally
+
+Start the backend API:
+
+```bash
+cd server
+npm start
+```
+
+Start the frontend:
+
+```bash
+cd client
+npm run dev
+```
+
+Start the AI service:
+
+```bash
+cd ai-service
+uvicorn main:app --reload --port 8001
+```
+
+Default local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:5000`
+- AI service: `http://localhost:8001`
+
+## Verification
+
+```bash
+cd client
+npm run lint
+npm run build
+```
+
+```bash
+cd server
+npm test
+```
+
+```bash
+python -m py_compile ai-service\main.py ai-service\register_face.py ai-service\recognize_faces.py ai-service\database.py
+```
+
+## Notes
+
+- Do not commit `.env`, `node_modules`, uploads, temp files, or Python cache files.
+- The backend and AI service expose `/health` endpoints for readiness checks.
+- In production, `JWT_SECRET` must be set. The development fallback is intentionally blocked in production.
+- Attendance supports both image upload and live webcam capture.
+- The AI response includes detected faces, unknown faces, and a liveness heuristic.
+- Admin users can manage account roles from the Admin panel.
+- Notification records are created for offline AI, unknown faces, and possible spoof attempts.
+- Email, SMS, and cloud storage require provider credentials and can be connected through the existing env/config pattern.

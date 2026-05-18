@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Download, FileSpreadsheet, TrendingUp, Users, Calendar } from 'lucide-react';
 import useFetch from '../hooks/useFetch';
 import AttendanceTable from '../components/AttendanceTable';
@@ -20,6 +20,7 @@ const StatCard = ({ icon: Icon, label, value, color }) => (
 const Reports = () => {
   const { data: summary, loading: summaryLoading } = useFetch('/reports/summary');
   const { data: records, loading: recordsLoading } = useFetch('/reports');
+  const { data: lowAttendance } = useFetch('/reports/low-attendance');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Export as CSV
@@ -107,6 +108,23 @@ const Reports = () => {
       </div>
 
       {/* Records Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h2 className="text-base font-semibold text-slate-800 mb-4">Low Attendance Risk</h2>
+        {lowAttendance?.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {lowAttendance.map(row => (
+              <div key={row.student._id} className="border border-amber-200 bg-amber-50 rounded-xl p-4">
+                <p className="font-semibold text-slate-800">{row.student.name}</p>
+                <p className="text-xs text-slate-500">{row.student.usn} · {row.student.department}-{row.student.section}</p>
+                <p className="mt-2 text-sm text-amber-700">{row.percentage}% attendance across {row.totalClasses} class(es)</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">No students are below the 75% threshold.</p>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2">

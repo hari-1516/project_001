@@ -5,11 +5,16 @@ from recognize_faces import run_recognition_pipeline
 from register_face import run_registration_pipeline
 
 app = FastAPI(title="VisionAttend AI Service")
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5000,http://localhost:5173").split(",")
+    if origin.strip()
+]
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -18,6 +23,10 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {"message": "VisionAttend AI Service is running"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.post("/recognize")
 async def recognize(file: UploadFile = File(...)):
@@ -31,14 +40,13 @@ async def recognize(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Mocked Recognition Pipeline
-    recognized_students = run_recognition_pipeline(file_path)
+    recognition = run_recognition_pipeline(file_path)
 
     # Clean up
     if os.path.exists(file_path):
         os.remove(file_path)
 
-    return {"recognized_students": recognized_students}
+    return recognition
 
 @app.post("/register")
 async def register(file: UploadFile = File(...)):
@@ -51,11 +59,10 @@ async def register(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Mocked Registration Pipeline
-    embedding = run_registration_pipeline(file_path)
+    registration = run_registration_pipeline(file_path)
 
     # Clean up
     if os.path.exists(file_path):
         os.remove(file_path)
 
-    return {"embedding": embedding}
+    return registration

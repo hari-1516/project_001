@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AttendanceProvider } from './context/AttendanceContext';
@@ -14,6 +13,7 @@ import StudentRegistration from './pages/StudentRegistration';
 import Attendance from './pages/Attendance';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Admin from './pages/Admin';
 
 const ProtectedLayout = ({ children }) => {
   const { user, loading } = useAuth();
@@ -55,6 +55,7 @@ function App() {
             <Route path="/register-student" element={<ProtectedLayout><StudentRegistration /></ProtectedLayout>} />
             <Route path="/attendance" element={<ProtectedLayout><Attendance /></ProtectedLayout>} />
             <Route path="/reports" element={<ProtectedLayout><Reports /></ProtectedLayout>} />
+            <Route path="/admin" element={<ProtectedLayout><Admin /></ProtectedLayout>} />
             <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
           </Routes>
         </Router>

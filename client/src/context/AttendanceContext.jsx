@@ -3,26 +3,35 @@ import api from '../api';
 
 const AttendanceContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAttendance = () => useContext(AttendanceContext);
 
 export const AttendanceProvider = ({ children }) => {
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [students, setStudents] = useState([]);
+  const [attendanceData] = useState([]);
+  const [students] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchDashboardStats = async () => {
     setLoading(true);
     try {
-      // In a real scenario, this would aggregate data from the backend
-      const { data: allStudents } = await api.get('/students');
-      
-      // Mock stats for dashboard using real total students count
+      const { data: summary } = await api.get('/reports/summary');
+      const { data: daily } = await api.get('/reports/daily');
+
+      const presentToday = daily.records.reduce(
+        (sum, record) => sum + record.presentStudents.length,
+        0
+      );
+      const absentToday = daily.records.reduce(
+        (sum, record) => sum + record.absentStudents.length,
+        0
+      );
+
       return {
-        totalStudents: allStudents.length,
-        presentToday: Math.floor(allStudents.length * 0.8), // Placeholder
-        absentToday: allStudents.length - Math.floor(allStudents.length * 0.8),
-        attendancePercentage: 80,
+        totalStudents: summary.totalStudents,
+        presentToday,
+        absentToday,
+        attendancePercentage: summary.overallPercentage,
       };
     } catch (err) {
       setError(err.message);

@@ -40,7 +40,7 @@ const Login = () => {
           setError(result.message || 'Registration failed');
         }
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);

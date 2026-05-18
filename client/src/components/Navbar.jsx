@@ -1,13 +1,15 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
+import api from '../api';
 
 const pageTitles = {
   '/': 'Dashboard',
   '/register-student': 'Register Student',
   '/attendance': 'Attendance Capture',
   '/reports': 'Reports',
+  '/admin': 'Admin Panel',
   '/settings': 'Settings',
 };
 
@@ -15,6 +17,19 @@ const Navbar = () => {
   const { user } = useAuth();
   const location = useLocation();
   const title = pageTitles[location.pathname] || 'VisionAttend AI';
+  const [notifications, setNotifications] = useState([]);
+  const unreadCount = notifications.filter(item => !item.read).length;
+
+  useEffect(() => {
+    api.get('/notifications')
+      .then(({ data }) => setNotifications(data))
+      .catch(() => setNotifications([]));
+  }, [location.pathname]);
+
+  const markRead = async () => {
+    await api.put('/notifications/read');
+    setNotifications(prev => prev.map(item => ({ ...item, read: true })));
+  };
 
   return (
     <div className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 z-10">
@@ -34,9 +49,13 @@ const Navbar = () => {
         </div>
 
         {/* Notification bell */}
-        <button className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors">
+        <button onClick={markRead} className="relative p-2 rounded-xl hover:bg-slate-50 transition-colors" title="Mark notifications read">
           <Bell className="w-5 h-5 text-slate-500" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-purple-500 rounded-full" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-purple-500 text-white text-[10px] rounded-full flex items-center justify-center">
+              {unreadCount}
+            </span>
+          )}
         </button>
 
         {/* Avatar */}

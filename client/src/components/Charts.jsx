@@ -1,5 +1,3 @@
-import React from 'react';
-
 /**
  * Mini bar chart for attendance trends — pure CSS, no library needed.
  * data: [{ date: 'YYYY-MM-DD', present: N, absent: N }, ...]
@@ -20,7 +18,6 @@ const Charts = ({ data = [], type = 'bar' }) => {
       <div className="space-y-1">
         <div className="flex items-end gap-2 h-40 px-2">
           {data.map((d, i) => {
-            const total = d.present + d.absent || 1;
             const presentHeight = (d.present / maxVal) * 100;
             const absentHeight = (d.absent / maxVal) * 100;
             return (
@@ -63,36 +60,39 @@ const Charts = ({ data = [], type = 'bar' }) => {
 
   if (type === 'donut') {
     const total = data.reduce((s, d) => s + (d.value || 0), 0) || 1;
-    let cumulative = 0;
     const RADIUS = 40;
     const CX = 60, CY = 60;
     const circumference = 2 * Math.PI * RADIUS;
 
     const colors = ['#7c3aed', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+    const segments = data.map((d, i) => {
+      const previous = data.slice(0, i).reduce((sum, item) => sum + ((item.value || 0) / total), 0);
+      const pct = (d.value || 0) / total;
+
+      return {
+        ...d,
+        dash: circumference * pct,
+        offset: circumference * (1 - previous),
+      };
+    });
 
     return (
       <div className="flex items-center gap-6">
         <svg width="120" height="120" viewBox="0 0 120 120">
-          {data.map((d, i) => {
-            const pct = d.value / total;
-            const offset = circumference * (1 - cumulative);
-            const dash = circumference * pct;
-            cumulative += pct;
-            return (
-              <circle
-                key={i}
-                cx={CX}
-                cy={CY}
-                r={RADIUS}
-                fill="none"
-                stroke={colors[i % colors.length]}
-                strokeWidth="18"
-                strokeDasharray={`${dash} ${circumference}`}
-                strokeDashoffset={offset}
-                style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px' }}
-              />
-            );
-          })}
+          {segments.map((d, i) => (
+            <circle
+              key={i}
+              cx={CX}
+              cy={CY}
+              r={RADIUS}
+              fill="none"
+              stroke={colors[i % colors.length]}
+              strokeWidth="18"
+              strokeDasharray={`${d.dash} ${circumference}`}
+              strokeDashoffset={d.offset}
+              style={{ transform: 'rotate(-90deg)', transformOrigin: '60px 60px' }}
+            />
+          ))}
           <text x={CX} y={CY + 5} textAnchor="middle" className="text-xs" fill="#334155" fontSize="14" fontWeight="600">
             {Math.round((data[0]?.value / total) * 100)}%
           </text>

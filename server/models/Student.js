@@ -17,12 +17,22 @@ const studentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  year: {
+    type: Number,
+    default: 1
+  },
+  section: {
+    type: String,
+    default: 'A',
+    trim: true,
+    uppercase: true
+  },
   embedding: {
     type: [Number],
     required: false
   },
   images: [{
-    type: String // URLs or paths to uploaded face images
+    type: String
   }],
   createdAt: {
     type: Date,

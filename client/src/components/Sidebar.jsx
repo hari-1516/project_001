@@ -1,6 +1,5 @@
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, UserPlus, Camera, FileText, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Camera, FileText, Settings, LogOut, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
@@ -8,6 +7,7 @@ const navItems = [
   { path: '/register-student', name: 'Register', icon: UserPlus },
   { path: '/attendance', name: 'Attendance', icon: Camera },
   { path: '/reports', name: 'Reports', icon: FileText },
+  { path: '/admin', name: 'Admin', icon: Shield, adminOnly: true },
   { path: '/settings', name: 'Settings', icon: Settings },
 ];
 
@@ -27,7 +27,7 @@ const Sidebar = () => {
 
       {/* Nav Links */}
       <nav className="flex-1 px-4 space-y-1 mt-4 overflow-y-auto">
-        {navItems.map(({ path, name, icon: Icon }) => {
+        {navItems.filter(item => !item.adminOnly || user?.role === 'admin').map(({ path, name, icon: Icon }) => {
           const isActive = location.pathname === path;
           return (
             <Link

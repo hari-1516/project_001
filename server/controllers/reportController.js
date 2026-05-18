@@ -124,9 +124,40 @@ const getSummary = async (req, res) => {
   }
 };
 
+const getLowAttendanceStudents = async (req, res) => {
+  try {
+    const threshold = Number(req.query.threshold || 75);
+    const students = await Student.find({}).select('-embedding').sort({ name: 1 });
+    const totalClasses = await Attendance.countDocuments();
+
+    if (totalClasses === 0) {
+      return res.json([]);
+    }
+
+    const rows = await Promise.all(students.map(async (student) => {
+      const presentCount = await Attendance.countDocuments({ presentStudents: student._id });
+      const percentage = Number(((presentCount / totalClasses) * 100).toFixed(1));
+
+      return {
+        student,
+        totalClasses,
+        presentCount,
+        absentCount: totalClasses - presentCount,
+        percentage,
+        risk: percentage < threshold ? 'low' : 'ok'
+      };
+    }));
+
+    res.json(rows.filter(row => row.percentage < threshold));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getFullReport,
   getDailyReport,
   getStudentReport,
-  getSummary
+  getSummary,
+  getLowAttendanceStudents
 };

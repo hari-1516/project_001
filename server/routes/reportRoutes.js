@@ -5,12 +5,14 @@ const {
   getFullReport,
   getDailyReport,
   getStudentReport,
-  getSummary
+  getSummary,
+  getLowAttendanceStudents
 } = require('../controllers/reportController');
 
 router.get('/', protect, getFullReport);
 router.get('/daily', protect, getDailyReport);
 router.get('/summary', protect, getSummary);
+router.get('/low-attendance', protect, getLowAttendanceStudents);
 router.get('/student/:usn', protect, getStudentReport);
 
 module.exports = router;

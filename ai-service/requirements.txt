@@ -5,3 +5,6 @@ deepface
 opencv-python
 numpy
 pymongo
+scipy
+python-dotenv
+tf-keras

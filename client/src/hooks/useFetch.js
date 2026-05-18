@@ -24,6 +24,7 @@ const useFetch = (endpoint, immediate = true) => {
   }, [endpoint]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (immediate) fetch();
   }, [fetch, immediate]);
 
