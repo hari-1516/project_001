@@ -28,6 +28,16 @@ def load_all_embeddings():
     students = list(db.students.find({}, {"usn": 1, "embedding": 1}))
     return [s for s in students if s.get("embedding") and len(s["embedding"]) > 0]
 
+
+def load_all_students():
+    """
+    Fetch all students with their USN and name.
+    """
+    db = get_db()
+    students = list(db.students.find({}, {"usn": 1, "name": 1, "_id": 0}))
+    return students
+
+
 # Initialize collection reference
 try:
     db = get_db()

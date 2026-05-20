@@ -15,36 +15,69 @@ const registerStudent = async (req, res) => {
 
   try {
     if (!name || !usn || !department) {
-      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      if (req.files) {
+        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
+      } else if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       return res.status(400).json({ message: 'Name, USN and Department are required' });
     }
 
     // Check for duplicate USN
     const studentExists = await Student.findOne({ usn: usn.toUpperCase() });
     if (studentExists) {
-      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      if (req.files) {
+        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
+      } else if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       return res.status(400).json({ message: `Student with USN "${usn.toUpperCase()}" already exists` });
     }
 
     let embedding = [];
-    let imagePath = req.file ? req.file.path : null;
+    let imagePaths = [];
+    
+    const files = req.files || (req.file ? [req.file] : []);
+    
+    // Collect image paths
+    if (files.length > 0) {
+      imagePaths = files.map(f => f.path);
+    }
 
     // Try to get face embedding from AI service — non-blocking if AI is offline
-    if (req.file) {
+    if (files.length > 0) {
       try {
-        const form = new FormData();
-        form.append('file', fs.createReadStream(req.file.path));
-
-        const aiResponse = await axios.post(`${AI_SERVICE_URL}/register`, form, {
-          headers: { ...form.getHeaders() },
-          timeout: 60000, // Increased timeout to 60s for AI service processing
-        });
-
-        if (aiResponse.data?.embedding) {
-          embedding = aiResponse.data.embedding;
+        // Use multi-photo registration if multiple images provided
+        if (files.length > 1) {
+          const form = new FormData();
+          for (const file of files) {
+            form.append('files', fs.createReadStream(file.path));
+          }
+          
+          const aiResponse = await axios.post(`${AI_SERVICE_URL}/register_multi`, form, {
+            headers: { ...form.getHeaders() },
+            timeout: 120000, // 2 min for multi-photo
+          });
+          
+          if (aiResponse.data?.embedding) {
+            embedding = aiResponse.data.embedding;
+            console.log(`Multi-photo registration: ${aiResponse.data.embeddings_count} images processed`);
+          }
+        } else {
+          // Single image registration
+          const form = new FormData();
+          form.append('file', fs.createReadStream(files[0].path));
+          
+          const aiResponse = await axios.post(`${AI_SERVICE_URL}/register`, form, {
+            headers: { ...form.getHeaders() },
+            timeout: 60000,
+          });
+          
+          if (aiResponse.data?.embedding) {
+            embedding = aiResponse.data.embedding;
+          }
         }
       } catch (aiError) {
-        // AI service is offline — save student without embedding (can be added later)
         console.warn('⚠️ AI service unavailable. Registering student without face embedding.');
       }
     }
@@ -56,7 +89,7 @@ const registerStudent = async (req, res) => {
       year: parseInt(year) || 1,
       section: section?.toUpperCase() || 'A',
       embedding,
-      images: imagePath ? [imagePath] : []
+      images: imagePaths
     });
 
     res.status(201).json({
@@ -76,7 +109,9 @@ const registerStudent = async (req, res) => {
 
   } catch (error) {
     console.error('Registration Error:', error.message);
-    if (req.file && fs.existsSync(req.file.path)) {
+    if (req.files) {
+      req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
+    } else if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ message: error.message || 'Server error during registration' });

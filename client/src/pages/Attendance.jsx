@@ -116,7 +116,13 @@ const Attendance = () => {
                 audio={false}
                 screenshotFormat="image/jpeg"
                 className="w-full h-full object-cover"
-                videoConstraints={{ facingMode: 'environment' }}
+                videoConstraints={{
+                  width: 640,
+                  height: 480,
+                  facingMode: 'user'
+                }}
+                onUserMedia={() => console.log('Camera started')}
+                onUserMediaError={(err) => console.error('Camera error:', err)}
               />
             </div>
             <button

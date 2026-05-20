@@ -251,9 +251,16 @@ const StudentRegistration = () => {
                       audio={false}
                       ref={webcamRef}
                       screenshotFormat="image/jpeg"
-                      videoConstraints={{ facingMode: 'user' }}
+                      videoConstraints={{
+                        width: 640,
+                        height: 480,
+                        facingMode: 'user'
+                      }}
                       className="w-full h-full object-cover"
-                      onUserMediaError={() => setWebcamError(true)}
+                      onUserMediaError={(err) => {
+                        console.error('Webcam error:', err);
+                        setWebcamError(true);
+                      }}
                     />
                     {/* Face guide oval */}
                     <div className="absolute inset-0 border-2 border-white/20 m-12 rounded-[100px] pointer-events-none" />

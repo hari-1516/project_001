@@ -1,4 +1,11 @@
+import sys
 import os
+
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from recognize_faces import run_recognition_pipeline
@@ -64,5 +71,29 @@ async def register(file: UploadFile = File(...)):
     # Clean up
     if os.path.exists(file_path):
         os.remove(file_path)
+
+    return registration
+
+
+@app.post("/register_multi")
+async def register_multi(files: list[UploadFile] = File(...)):
+    """
+    Receives multiple images for a new student and generates averaged embedding.
+    """
+    os.makedirs("temp", exist_ok=True)
+    file_paths = []
+    
+    for file in files:
+        file_path = f"temp/{file.filename}"
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
+        file_paths.append(file_path)
+
+    registration = run_multi_registration_pipeline(file_paths)
+
+    # Clean up
+    for file_path in file_paths:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     return registration

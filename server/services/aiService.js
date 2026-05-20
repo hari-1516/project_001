@@ -17,7 +17,7 @@ const recognizeFaces = async (imagePath) => {
 
     const response = await axios.post(`${AI_SERVICE_URL}/recognize`, form, {
       headers: { ...form.getHeaders() },
-      timeout: 8000, // 8 second timeout
+      timeout: 60000, // 60 second timeout to allow for heavy AI processing
     });
 
     return {
