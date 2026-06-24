@@ -1,9 +1,6 @@
 const Student = require('../models/Student');
-const axios = require('axios');
-const FormData = require('form-data');
-const fs = require('fs');
-
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
+const fs = require('fs').promises;
+const { registerFace } = require('../services/aiService');
 
 /**
  * @desc    Register a new student (works with or without AI service)
@@ -16,9 +13,9 @@ const registerStudent = async (req, res) => {
   try {
     if (!name || !usn || !department) {
       if (req.files) {
-        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
-      } else if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+        await Promise.all(req.files.map(f => fs.unlink(f.path).catch(() => {})));
+      } else if (req.file) {
+        await fs.unlink(req.file.path).catch(() => {});
       }
       return res.status(400).json({ message: 'Name, USN and Department are required' });
     }
@@ -27,59 +24,22 @@ const registerStudent = async (req, res) => {
     const studentExists = await Student.findOne({ usn: usn.toUpperCase() });
     if (studentExists) {
       if (req.files) {
-        req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
-      } else if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+        await Promise.all(req.files.map(f => fs.unlink(f.path).catch(() => {})));
+      } else if (req.file) {
+        await fs.unlink(req.file.path).catch(() => {});
       }
       return res.status(400).json({ message: `Student with USN "${usn.toUpperCase()}" already exists` });
     }
 
     let embedding = [];
     let imagePaths = [];
-    
+
     const files = req.files || (req.file ? [req.file] : []);
-    
-    // Collect image paths
+
     if (files.length > 0) {
       imagePaths = files.map(f => f.path);
-    }
-
-    // Try to get face embedding from AI service — non-blocking if AI is offline
-    if (files.length > 0) {
-      try {
-        // Use multi-photo registration if multiple images provided
-        if (files.length > 1) {
-          const form = new FormData();
-          for (const file of files) {
-            form.append('files', fs.createReadStream(file.path));
-          }
-          
-          const aiResponse = await axios.post(`${AI_SERVICE_URL}/register_multi`, form, {
-            headers: { ...form.getHeaders() },
-            timeout: 120000, // 2 min for multi-photo
-          });
-          
-          if (aiResponse.data?.embedding) {
-            embedding = aiResponse.data.embedding;
-            console.log(`Multi-photo registration: ${aiResponse.data.embeddings_count} images processed`);
-          }
-        } else {
-          // Single image registration
-          const form = new FormData();
-          form.append('file', fs.createReadStream(files[0].path));
-          
-          const aiResponse = await axios.post(`${AI_SERVICE_URL}/register`, form, {
-            headers: { ...form.getHeaders() },
-            timeout: 60000,
-          });
-          
-          if (aiResponse.data?.embedding) {
-            embedding = aiResponse.data.embedding;
-          }
-        }
-      } catch (aiError) {
-        console.warn('⚠️ AI service unavailable. Registering student without face embedding.');
-      }
+      const result = await registerFace(files);
+      embedding = result.embedding;
     }
 
     const student = await Student.create({
@@ -110,9 +70,9 @@ const registerStudent = async (req, res) => {
   } catch (error) {
     console.error('Registration Error:', error.message);
     if (req.files) {
-      req.files.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
-    } else if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      await Promise.all(req.files.map(f => fs.unlink(f.path).catch(() => {})));
+    } else if (req.file) {
+      await fs.unlink(req.file.path).catch(() => {});
     }
     res.status(500).json({ message: error.message || 'Server error during registration' });
   }
@@ -193,10 +153,58 @@ const deleteStudent = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Re-register face embedding for an existing student
+ * @route   POST /api/students/:id/re-register
+ * @access  Private
+ */
+const reRegisterFace = async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    const files = req.files || (req.file ? [req.file] : []);
+    if (files.length === 0) {
+      return res.status(400).json({ message: 'At least one face image is required' });
+    }
+
+    const imagePaths = files.map(f => f.path);
+    const { embedding } = await registerFace(files);
+
+    if (embedding.length === 0) {
+      await Promise.all(files.map(f => fs.unlink(f.path).catch(() => {})));
+      return res.status(400).json({ message: 'Failed to generate face embedding. Make sure the image contains a clear face.' });
+    }
+
+    student.embedding = embedding;
+    student.images = [...(student.images || []), ...imagePaths];
+    await student.save();
+
+    await Promise.all(files.map(f => fs.unlink(f.path).catch(() => {})));
+
+    res.json({
+      message: 'Face embedding updated successfully',
+      student: {
+        _id: student._id,
+        name: student.name,
+        usn: student.usn,
+        hasEmbedding: true
+      }
+    });
+  } catch (error) {
+    console.error('Re-registration Error:', error.message);
+    if (req.files) {
+      await Promise.all(req.files.map(f => fs.unlink(f.path).catch(() => {})));
+    }
+    res.status(500).json({ message: error.message || 'Server error during re-registration' });
+  }
+};
+
 module.exports = {
   registerStudent,
   getStudents,
   getStudentById,
   updateStudent,
-  deleteStudent
+  deleteStudent,
+  reRegisterFace
 };

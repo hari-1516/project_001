@@ -12,15 +12,6 @@ export const formatDate = (dateStr) => {
 };
 
 /**
- * Get attendance percentage color class based on value
- */
-export const getPercentageColor = (pct) => {
-  if (pct >= 75) return 'text-green-600';
-  if (pct >= 50) return 'text-yellow-600';
-  return 'text-red-600';
-};
-
-/**
  * Get badge bg color based on attendance percentage
  */
 export const getPercentageBadge = (pct) => {
@@ -30,26 +21,17 @@ export const getPercentageBadge = (pct) => {
 };
 
 /**
- * Convert image file to base64 string
+ * Convert data URL to File object
  */
-export const toBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-  });
-
-/**
- * Format a number to a compact string (1000 -> 1K)
- */
-export const formatNumber = (num) => {
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-  return num?.toString() || '0';
+export const dataURLtoFile = (dataurl, filename) => {
+  const arr = dataurl.split(',');
+  const match = arr[0].match(/:(.*?);/);
+  if (!match) return null;
+  const mime = match[1];
+  const bstr = atob(arr[1]);
+  const bytes = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) {
+    bytes[i] = bstr.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mime });
 };
-
-/**
- * Truncate a string to a max length
- */
-export const truncate = (str, max = 30) =>
-  str && str.length > max ? `${str.substring(0, max)}...` : str;

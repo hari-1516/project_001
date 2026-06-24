@@ -3,7 +3,7 @@ const Student = require('../models/Student');
 const Class = require('../models/Class');
 const { recognizeFaces } = require('../services/aiService');
 const { createNotification } = require('../services/notificationService');
-const fs = require('fs');
+const fs = require('fs').promises;
 
 /**
  * @desc    Capture attendance from an uploaded image
@@ -18,22 +18,21 @@ const captureAttendance = async (req, res) => {
 
     const { classId } = req.body;
     if (!classId) {
-      // Clean up the uploaded file if validation fails
-      fs.unlinkSync(req.file.path);
+      await fs.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ message: 'Class ID is required' });
     }
 
     // 1. Send image to AI Service
     const recognition = await recognizeFaces(req.file.path);
     const recognizedUsns = recognition.recognizedStudents;
+    const recognizedUsnStrings = new Set(recognizedUsns.map(r => r.usn));
 
     // 2. Fetch students for the requested class to find who is absent.
-    // Falls back to department/section/year encoded in classId, e.g. CSE-A or CSE-3-A.
     let allStudents = [];
     const classRecord = await Class.findOne({ classId }).populate('students');
 
     if (classRecord?.students?.length) {
-      allStudents = classRecord.students;
+      allStudents = classRecord.students.filter(Boolean);
     } else {
       const parts = classId.split('-').map(part => part.trim()).filter(Boolean);
       const query = {};
@@ -52,19 +51,28 @@ const captureAttendance = async (req, res) => {
 
     const presentStudents = [];
     const absentStudents = [];
+    const presentStudentDetails = [];
+    const absentStudentDetails = [];
 
     allStudents.forEach(student => {
-      if (recognizedUsns.includes(student.usn)) {
+      if (recognizedUsnStrings.has(student.usn)) {
         presentStudents.push(student._id);
+        presentStudentDetails.push({ name: student.name, usn: student.usn, department: student.department, section: student.section });
       } else {
         absentStudents.push(student._id);
+        absentStudentDetails.push({ name: student.name, usn: student.usn, department: student.department, section: student.section });
       }
     });
 
     // 3. Create Attendance Record
+    if (!req.user) {
+      await fs.unlink(req.file.path).catch(() => {});
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const attendance = new Attendance({
       classId,
       date: new Date(),
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
       presentStudents,
       absentStudents,
       attendanceImage: req.file.path,
@@ -74,7 +82,7 @@ const captureAttendance = async (req, res) => {
         aiAvailable: recognition.aiAvailable,
         liveness: recognition.liveness
       },
-      createdBy: req.user._id // Assuming authMiddleware sets req.user
+      createdBy: req.user._id
     });
 
     const savedAttendance = await attendance.save();
@@ -118,14 +126,15 @@ const captureAttendance = async (req, res) => {
         aiAvailable: recognition.aiAvailable,
         liveness: recognition.liveness
       },
+      presentStudents: presentStudentDetails,
+      absentStudents: absentStudentDetails,
       recognizedUsns
     });
 
   } catch (error) {
     console.error('Error capturing attendance:', error);
-    // Cleanup file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (req.file) {
+      await fs.unlink(req.file.path).catch(() => {});
     }
     res.status(500).json({ message: error.message || 'Server Error' });
   }

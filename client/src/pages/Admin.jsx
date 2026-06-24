@@ -28,13 +28,22 @@ const Admin = () => {
   }, []);
 
   const updateRole = async (id, role) => {
-    await api.put(`/auth/users/${id}/role`, { role });
-    fetchUsers();
+    try {
+      await api.put(`/auth/users/${id}/role`, { role });
+      fetchUsers();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update role');
+    }
   };
 
   const removeUser = async (id) => {
-    await api.delete(`/auth/users/${id}`);
-    fetchUsers();
+    if (!window.confirm('Are you sure you want to delete this user?')) return;
+    try {
+      await api.delete(`/auth/users/${id}`);
+      fetchUsers();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete user');
+    }
   };
 
   if (user?.role !== 'admin') {

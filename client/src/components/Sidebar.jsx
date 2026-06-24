@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, UserPlus, Camera, FileText, Settings, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, UserPlus, Camera, FileText, Settings, LogOut, Shield, Menu, X, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
@@ -7,6 +8,7 @@ const navItems = [
   { path: '/register-student', name: 'Register', icon: UserPlus },
   { path: '/attendance', name: 'Attendance', icon: Camera },
   { path: '/reports', name: 'Reports', icon: FileText },
+  { path: '/live-attendance', name: 'Live Attendance', icon: Radio },
   { path: '/admin', name: 'Admin', icon: Shield, adminOnly: true },
   { path: '/settings', name: 'Settings', icon: Settings },
 ];
@@ -14,9 +16,10 @@ const navItems = [
 const Sidebar = () => {
   const location = useLocation();
   const { logout, user } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <div className="w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex flex-col">
+  const navContent = (
+    <>
       {/* Logo */}
       <div className="p-6 border-b border-slate-100">
         <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
@@ -33,6 +36,7 @@ const Sidebar = () => {
             <Link
               key={path}
               to={path}
+              onClick={() => setMobileOpen(false)}
               className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
                 isActive
                   ? 'bg-purple-50 text-purple-700 font-medium'
@@ -65,7 +69,40 @@ const Sidebar = () => {
           <span>Sign Out</span>
         </button>
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-xl shadow-md border border-slate-200"
+      >
+        <Menu className="w-5 h-5 text-slate-600" />
+      </button>
+
+      {/* Desktop sidebar */}
+      <div className="hidden lg:flex w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex-col">
+        {navContent}
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
+          <div className="relative w-64 bg-white h-full flex flex-col shadow-xl">
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="absolute top-4 right-4 p-1 rounded-lg hover:bg-slate-100"
+            >
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+            {navContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, User, Lock, Bell, Database, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
@@ -20,11 +20,18 @@ const Settings = () => {
     confirm: ''
   });
 
-  const [notifications, setNotifications] = useState({
-    emailAlerts: true,
-    lowAttendanceAlert: true,
-    dailyReport: false
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const saved = localStorage.getItem('notificationPrefs');
+      return saved ? JSON.parse(saved) : { emailAlerts: true, lowAttendanceAlert: true, dailyReport: false };
+    } catch {
+      return { emailAlerts: true, lowAttendanceAlert: true, dailyReport: false };
+    }
   });
+
+  useEffect(() => {
+    localStorage.setItem('notificationPrefs', JSON.stringify(notifications));
+  }, [notifications]);
 
   const showMessage = (text, type = 'success') => {
     setMessage({ text, type });
@@ -48,6 +55,10 @@ const Settings = () => {
     e.preventDefault();
     if (passwords.newPass !== passwords.confirm) {
       showMessage('New passwords do not match', 'error');
+      return;
+    }
+    if (passwords.newPass.length < 6) {
+      showMessage('Password must be at least 6 characters', 'error');
       return;
     }
     setSaving(true);
@@ -118,10 +129,9 @@ const Settings = () => {
             <form onSubmit={handleProfileSave} className="space-y-5">
               <h2 className="text-lg font-semibold text-slate-800">Profile Information</h2>
 
-              {/* Avatar */}
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-2xl font-bold">
-                  {profile.name.charAt(0).toUpperCase()}
+                  {profile.name?.charAt(0)?.toUpperCase() || 'U'}
                 </div>
                 <div>
                   <p className="font-medium text-slate-800">{profile.name}</p>

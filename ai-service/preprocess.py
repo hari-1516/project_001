@@ -5,18 +5,14 @@ import numpy as np
 def preprocess_image(image_path: str) -> np.ndarray:
     """
     Load and preprocess an image for face recognition.
-    - Resizes to a standard size
-    - Converts to RGB
-    - Normalizes brightness
+    Converts to RGB and normalizes brightness using CLAHE.
     """
     img = cv2.imread(image_path)
     if img is None:
         raise ValueError(f"Could not read image at path: {image_path}")
 
-    # Convert BGR (OpenCV default) to RGB (required by DeepFace)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # Normalize brightness using CLAHE on the L channel
     img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(img_lab)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -25,6 +21,39 @@ def preprocess_image(image_path: str) -> np.ndarray:
     img_normalized = cv2.cvtColor(img_lab_eq, cv2.COLOR_LAB2RGB)
 
     return img_normalized
+
+
+def preprocess_for_recognition(image_path: str) -> str:
+    """Denoise only — preserve embedding characteristics. Returns temp path."""
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            return image_path
+        denoised = cv2.bilateralFilter(img, 5, 50, 50)
+        temp_path = image_path + '_rec.jpg'
+        cv2.imwrite(temp_path, denoised, [cv2.IMWRITE_JPEG_QUALITY, 98])
+        return temp_path
+    except Exception:
+        return image_path
+
+
+def preprocess_for_registration(image_path: str) -> str:
+    """Stronger preprocessing for registration — cleanest embedding. Returns temp path."""
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            return image_path
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l_eq = clahe.apply(l)
+        enhanced = cv2.merge((l_eq, a, b))
+        enhanced_bgr = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        temp_path = image_path + '_reg.jpg'
+        cv2.imwrite(temp_path, enhanced_bgr, [cv2.IMWRITE_JPEG_QUALITY, 98])
+        return temp_path
+    except Exception:
+        return image_path
 
 
 def resize_image(img: np.ndarray, max_size: int = 1280) -> np.ndarray:

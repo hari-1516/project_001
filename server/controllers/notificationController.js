@@ -15,7 +15,14 @@ const getNotifications = async (req, res) => {
 
 const markNotificationsRead = async (req, res) => {
   try {
-    await Notification.updateMany({ read: false }, { read: true });
+    const { ids } = req.body;
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Mark specific notifications as read
+      await Notification.updateMany({ _id: { $in: ids } }, { read: true });
+    } else {
+      // Mark all unread as read
+      await Notification.updateMany({ read: false }, { read: true });
+    }
     res.json({ message: 'Notifications marked as read' });
   } catch (error) {
     res.status(500).json({ message: error.message });

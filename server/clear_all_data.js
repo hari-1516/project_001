@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
+require('dotenv').config();
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://harishsiddaraju2005_db_user:CpEjEesHqK88Y5Ee@cluster0.e4byiil.mongodb.net/visionattend';
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error('Error: MONGO_URI environment variable is not set. Copy .env.example to .env and configure it.');
+  process.exit(1);
+}
 
 async function clearAllData() {
     try {

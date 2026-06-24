@@ -1,13 +1,14 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useMemo } from 'react';
 import Webcam from 'react-webcam';
 import { Camera, RefreshCw, Save, UserPlus, CheckCircle, AlertCircle, Upload, X, Image } from 'lucide-react';
 import api from '../api';
+import { dataURLtoFile } from '../utils/helpers';
 
 const StudentRegistration = () => {
   const webcamRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [images, setImages] = useState([]);         // base64 captured images
-  const [uploadedFile, setUploadedFile] = useState(null); // file upload fallback
+  const [images, setImages] = useState([]);
+  const [uploadedFile, setUploadedFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState('');
@@ -26,26 +27,15 @@ const StudentRegistration = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Capture from webcam
   const capture = useCallback(() => {
     if (!webcamRef.current) return;
     const imageSrc = webcamRef.current.getScreenshot();
     if (imageSrc && images.length < 5) {
       setImages(prev => [...prev, imageSrc]);
     }
-  }, [webcamRef, images]);
+  }, [images.length]);
 
   const removeImage = (idx) => setImages(prev => prev.filter((_, i) => i !== idx));
-
-  // Convert base64 to File
-  const dataURLtoFile = (dataurl, filename) => {
-    const arr = dataurl.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    const u8arr = new Uint8Array(bstr.length);
-    for (let n = bstr.length - 1; n >= 0; n--) u8arr[n] = bstr.charCodeAt(n);
-    return new File([u8arr], filename, { type: mime });
-  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -53,6 +43,11 @@ const StudentRegistration = () => {
   };
 
   const hasImage = images.length > 0 || uploadedFile !== null;
+
+  const uploadedPreview = useMemo(() => {
+    if (uploadedFile) return URL.createObjectURL(uploadedFile);
+    return null;
+  }, [uploadedFile]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,15 +69,24 @@ const StudentRegistration = () => {
       form.append('year', formData.year);
       form.append('section', formData.section);
 
-      // Prefer webcam capture, fallback to file upload
+      let url = '/students';
+
       if (images.length > 0) {
-        const file = dataURLtoFile(images[0], `${formData.usn}.jpg`);
-        form.append('image', file);
+        if (images.length > 1) {
+          url = '/students/multi';
+          images.forEach((imgSrc, idx) => {
+            const file = dataURLtoFile(imgSrc, `${formData.usn}_${idx}.jpg`);
+            form.append('images', file);
+          });
+        } else {
+          const file = dataURLtoFile(images[0], `${formData.usn}.jpg`);
+          form.append('image', file);
+        }
       } else if (uploadedFile) {
         form.append('image', uploadedFile);
       }
 
-      const response = await api.post('/students', form, {
+      const response = await api.post(url, form, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -122,7 +126,7 @@ const StudentRegistration = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* ── Left: Form ── */}
+        {/* Left: Form */}
         <div className="lg:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
           <div className="flex items-center gap-2 mb-6">
             <UserPlus className="w-5 h-5 text-purple-600" />
@@ -130,7 +134,6 @@ const StudentRegistration = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Full Name *</label>
               <input
@@ -141,7 +144,6 @@ const StudentRegistration = () => {
               />
             </div>
 
-            {/* USN */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">USN / Roll No *</label>
               <input
@@ -152,7 +154,6 @@ const StudentRegistration = () => {
               />
             </div>
 
-            {/* Department */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Department *</label>
               <select
@@ -167,7 +168,6 @@ const StudentRegistration = () => {
               </select>
             </div>
 
-            {/* Year & Section */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Year</label>
@@ -189,7 +189,6 @@ const StudentRegistration = () => {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading || !hasImage}
@@ -206,12 +205,12 @@ const StudentRegistration = () => {
             </button>
 
             {!hasImage && (
-              <p className="text-xs text-center text-slate-400">📸 Capture or upload a face photo to enable registration</p>
+              <p className="text-xs text-center text-slate-400">Capture or upload a face photo to enable registration</p>
             )}
           </form>
         </div>
 
-        {/* ── Right: Camera / Upload ── */}
+        {/* Right: Camera / Upload */}
         <div className="lg:col-span-2 space-y-4">
 
           {/* Toggle: Webcam vs Upload */}
@@ -262,7 +261,6 @@ const StudentRegistration = () => {
                         setWebcamError(true);
                       }}
                     />
-                    {/* Face guide oval */}
                     <div className="absolute inset-0 border-2 border-white/20 m-12 rounded-[100px] pointer-events-none" />
                     <div className="absolute top-3 left-3 bg-black/50 text-white text-xs px-3 py-1 rounded-full">
                       {images.length}/5 captured
@@ -275,13 +273,6 @@ const StudentRegistration = () => {
                     <button onClick={() => setUseUpload(true)} className="mt-2 text-purple-600 text-sm underline">
                       Use file upload instead
                     </button>
-                  </div>
-                )}
-
-                {webcamError && (
-                  <div className="mt-3 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-xl flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Camera access denied. <button onClick={() => setUseUpload(true)} className="underline ml-1">Use file upload</button>
                   </div>
                 )}
 
@@ -336,7 +327,7 @@ const StudentRegistration = () => {
                 ) : (
                   <div className="relative rounded-2xl overflow-hidden aspect-video bg-slate-100">
                     <img
-                      src={URL.createObjectURL(uploadedFile)}
+                      src={uploadedPreview}
                       alt="Uploaded"
                       className="w-full h-full object-cover"
                     />

@@ -1,126 +1,160 @@
 import cv2
 import numpy as np
-from scipy.spatial.distance import cosine
 import os
-import pickle
 from database import load_all_embeddings, load_all_students
+from anti_spoof import check_liveness
+from preprocess import preprocess_for_recognition, preprocess_for_registration
 
 try:
-    from deepface.DeepFace import build_model
-    from retinaface import RetinaFace
+    from deepface import DeepFace
     DEEPFACE_AVAILABLE = True
 except ImportError:
     DEEPFACE_AVAILABLE = False
 
-BASE_THRESHOLD = 0.18
-ENSEMBLE_RUNS = 5
 MODEL_NAME = 'ArcFace'
-MIN_FACE_SIZE = 30
+DETECTOR = 'mtcnn'
+FALLBACK_DETECTOR = 'retinaface'
+MIN_FACE_SIZE = 40
 
-_embedding_model = None
-
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None and DEEPFACE_AVAILABLE:
-        _embedding_model = build_model(MODEL_NAME)
-    return _embedding_model
-
-
-def load_all_embeddings_db():
-    db_embeddings = load_all_embeddings()
-    embeddings_dict = {}
-    for s in db_embeddings:
-        if s.get('embedding') and len(s['embedding']) > 0:
-            embeddings_dict[s['usn']] = np.array(s['embedding'])
-    return embeddings_dict
+# ============================================================
+# THRESHOLDS — tuned from actual classroom log data
+# ============================================================
+BASE_THRESHOLD = 0.70
+SEPARATION_THRESHOLD = 0.04
+QUALITY_MIN = 0.20
+CONFIDENCE_MIN = 0.55
 
 
-def extract_face_embeddings(image_path, face_crops):
-    if not DEEPFACE_AVAILABLE:
+def compute_face_quality(img, face_region):
+    """Multi-factor face quality: 0.0 (worst) to 1.0 (best)."""
+    try:
+        x, y, w, h = face_region
+        pad = int(min(w, h) * 0.1)
+        x1, y1 = max(0, x - pad), max(0, y - pad)
+        x2, y2 = min(img.shape[1], x + w + pad), min(img.shape[0], y + h + pad)
+        face = img[y1:y2, x1:x2]
+        if face.size == 0 or face.shape[0] < 10 or face.shape[1] < 10:
+            return 0.0
+
+        gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+
+        # Blur
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        blur_score = min(laplacian_var / 300.0, 1.0)
+
+        # Brightness
+        brightness = np.mean(gray)
+        if brightness < 40 or brightness > 240:
+            brightness_score = 0.1
+        elif brightness < 70 or brightness > 210:
+            brightness_score = 0.5
+        else:
+            brightness_score = 1.0 - abs(brightness - 140.0) / 140.0
+
+        # Contrast
+        contrast = np.std(gray)
+        contrast_score = min(contrast / 50.0, 1.0)
+
+        # Face size
+        face_size_score = min(max(w, h) / 100.0, 1.0)
+
+        quality = (blur_score * 0.35 + brightness_score * 0.25 +
+                   contrast_score * 0.25 + face_size_score * 0.15)
+        return float(max(0.0, min(1.0, quality)))
+    except Exception:
+        return 0.5
+
+
+def detect_faces(img, image_path):
+    """Detect faces — MTCNN primary, RetinaFace fallback."""
+    try:
+        result = DeepFace.represent(
+            img_path=image_path, model_name=MODEL_NAME,
+            enforce_detection=True, detector_backend=DETECTOR, align=True
+        )
+        if result and len(result) > 0:
+            return result, True
+    except Exception as e:
+        print(f"MTCNN failed: {e}, trying fallback...")
+
+    try:
+        result = DeepFace.represent(
+            img_path=image_path, model_name=MODEL_NAME,
+            enforce_detection=True, detector_backend=FALLBACK_DETECTOR, align=True
+        )
+        if result and len(result) > 0:
+            return result, True
+    except Exception as e:
+        print(f"Fallback failed: {e}")
+
+    return [], False
+
+
+def cluster_faces(face_results):
+    """Cluster multiple detections of same person — keep best detection."""
+    if not face_results:
         return []
-    
-    model = get_embedding_model()
-    if model is None:
-        return []
-    
-    from deepface.commons import functions
-    embeddings = []
-    
-    for crop_path in face_crops:
-        try:
-            img = functions.preprocess_face(
-                img_path=crop_path,
-                target_size=(112, 112),
-                enforce_detection=False
-            )
-            if img is not None:
-                emb = model.predict(img, verbose=0)[0]
-                embeddings.append(emb.tolist())
-        except Exception:
+
+    sorted_results = sorted(face_results, key=lambda x: x['distance'])
+    clusters = []
+    assigned = set()
+
+    for i, r in enumerate(sorted_results):
+        if i in assigned:
             continue
-    
-    return embeddings
+        cluster = [r]
+        assigned.add(i)
+        for j, r2 in enumerate(sorted_results):
+            if j in assigned:
+                continue
+            if r['usn'] == r2['usn']:
+                cluster.append(r2)
+                assigned.add(j)
+
+        best = min(cluster, key=lambda x: x['distance'])
+        clusters.append({
+            'usn': r['usn'],
+            'best_distance': float(best['distance']),
+            'best_separation': float(best['separation']),
+            'best_quality': float(best['quality']),
+            'avg_distance': float(np.mean([c['distance'] for c in cluster])),
+            'count': len(cluster)
+        })
+
+    return clusters
 
 
-def detect_faces_ensemble(image_path, thresholds=[0.45, 0.50, 0.55]):
-    """
-    Run face detection multiple times with different thresholds and fuse results.
-    """
-    all_faces = {}
-    
-    for i, threshold in enumerate(thresholds):
-        try:
-            faces_data = RetinaFace.detect_faces(image_path, threshold=threshold)
-            
-            if isinstance(faces_data, dict):
-                for key, face_info in faces_data.items():
-                    if key not in all_faces:
-                        all_faces[key] = {
-                            'facial_area': face_info['facial_area'],
-                            'confidence': face_info.get('confidence', 0),
-                            'detection_runs': []
-                        }
-                    all_faces[key]['detection_runs'].append(threshold)
-                    all_faces[key]['confidence'] = max(all_faces[key]['confidence'], face_info.get('confidence', 0))
-        except Exception:
-            continue
-    
-    return all_faces
+def calculate_confidence(distance, separation, face_quality, cluster_count):
+    """Multi-factor confidence — conservative to avoid false positives."""
+    # Base from distance
+    if distance < 0.30:
+        base = 0.98
+    elif distance < 0.40:
+        base = 0.93
+    elif distance < 0.50:
+        base = 0.82
+    elif distance < 0.55:
+        base = 0.72
+    elif distance < 0.60:
+        base = 0.62
+    elif distance < 0.65:
+        base = 0.52
+    elif distance < 0.70:
+        base = 0.42
+    else:
+        base = 0.30
 
+    # Separation bonus — larger gap = more certain
+    sep_bonus = min(separation * 0.8, 0.15)
 
-def calculate_adaptive_threshold(face_confidence, avg_distance):
-    """
-    Calculate adaptive threshold based on face detection confidence and distance.
-    """
-    confidence_factor = min(1.0, face_confidence / 0.9)
-    
-    distance_factor = 1.0
-    if avg_distance < 0.12:
-        distance_factor = 0.90
-    elif avg_distance > 0.18:
-        distance_factor = 1.10
-    
-    adaptive_threshold = BASE_THRESHOLD * confidence_factor * distance_factor
-    
-    return max(0.15, min(0.25, adaptive_threshold))
+    # Quality factor
+    quality_factor = 0.6 + 0.4 * face_quality
 
+    # Cluster bonus
+    cluster_bonus = min((cluster_count - 1) * 0.04, 0.12)
 
-def verify_match(embedding, known_embeddings, usn, threshold=BASE_THRESHOLD):
-    """
-    Verify a match by checking cosine similarity against known embeddings.
-    Returns confidence score based on similarity.
-    """
-    emb = np.array(embedding)
-    known_emb = np.array(known_embeddings[usn])
-    
-    similarity = np.dot(emb, known_emb) / (np.linalg.norm(emb) * np.linalg.norm(known_emb) + 1e-8)
-    distance = 1 - similarity
-    
-    if distance < threshold:
-        confidence = max(0, 1 - distance * 4)
-        return True, round(confidence, 3)
-    return False, 0.0
+    confidence = (base + sep_bonus + cluster_bonus) * quality_factor
+    return float(max(0.0, min(0.99, confidence)))
 
 
 def run_recognition_pipeline(image_path: str):
@@ -133,171 +167,177 @@ def run_recognition_pipeline(image_path: str):
     absent_students = []
 
     if not DEEPFACE_AVAILABLE:
-        return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0, 
+        return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0,
                 "liveness": liveness, "error": "DeepFace not available"}
 
     try:
         if not os.path.exists(image_path):
-            return {
-                "recognized_students": [],
-                "total_faces": 0,
-                "unknown_faces": 0,
-                "liveness": liveness,
-                "error": "Image file not found"
-            }
+            return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0,
+                    "liveness": liveness, "error": "Image file not found"}
 
         known_embeddings = load_all_embeddings_db()
         if not known_embeddings:
-            return {
-                "recognized_students": [],
-                "total_faces": 0,
-                "unknown_faces": 0,
-                "liveness": liveness,
-                "error": "No embeddings in database"
-            }
+            return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0,
+                    "liveness": liveness, "error": "No embeddings in database"}
 
-        faces_data = detect_faces_ensemble(image_path, thresholds=[0.40, 0.45, 0.50, 0.55, 0.60])
-        
-        total_faces = len(faces_data)
+        num_registered = len(known_embeddings)
+        print(f"Using ArcFace with {num_registered} registered students")
 
-        if total_faces == 0:
-            return {
-                "recognized_students": [],
-                "total_faces": 0,
-                "unknown_faces": 0,
-                "liveness": liveness,
-                "error": "No faces detected"
-            }
-
-        face_crops = []
-        temp_dir = os.path.join(os.path.dirname(__file__), 'temp', 'faces')
-        os.makedirs(temp_dir, exist_ok=True)
-        
         img = cv2.imread(image_path)
-        if img is not None:
-            h, w = img.shape[:2]
-            
-            for idx, (key, face_info) in enumerate(faces_data.items()):
-                facial_area = face_info['facial_area']
-                x1, y1, x2, y2 = facial_area
-                
-                face_width = x2 - x1
-                face_height = y2 - y1
-                if face_width < MIN_FACE_SIZE or face_height < MIN_FACE_SIZE:
-                    continue
-                
-                margin_x = int(face_width * 0.15)
-                margin_y = int(face_height * 0.2)
-                
-                x1_crop = max(0, x1 - margin_x)
-                y1_crop = max(0, y1 - margin_y)
-                x2_crop = min(w, x2 + margin_x)
-                y2_crop = min(h, y2 + margin_y)
-                
-                face_crop = img[y1_crop:y2_crop, x1_crop:x2_crop]
-                crop_path = os.path.join(temp_dir, f'face_{idx}.jpg')
-                cv2.imwrite(crop_path, face_crop)
-                face_crops.append(crop_path)
+        if img is None:
+            return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0,
+                    "liveness": liveness, "error": "Could not read image"}
 
-        embeddings = extract_face_embeddings(image_path, face_crops)
-        
-        for crop_path in face_crops:
-            if os.path.exists(crop_path):
-                os.remove(crop_path)
+        enhanced_path = preprocess_for_recognition(image_path)
+        try:
+            result, detection_success = detect_faces(img, enhanced_path)
+        finally:
+            if enhanced_path != image_path and os.path.exists(enhanced_path):
+                try:
+                    os.remove(enhanced_path)
+                except Exception:
+                    pass
+
+        if not detection_success or not result or len(result) == 0:
+            return {"recognized_students": [], "total_faces": 0, "unknown_faces": 0,
+                    "liveness": liveness, "error": "No faces detected in image"}
+
+        total_faces = len(result)
+        print(f"Detected {total_faces} faces")
+
+        face_results = []
 
         usn_list = list(known_embeddings.keys())
         all_embeddings = np.array([known_embeddings[usn] for usn in usn_list])
 
-        face_results = []
-        
-        for i, current_emb in enumerate(embeddings):
-            if current_emb is None or len(current_emb) == 0:
+        # Track which USNs are already matched (one match per person per image)
+        matched_usns = set()
+
+        for idx, face_data in enumerate(result):
+            current_emb = np.array(face_data["embedding"], dtype=np.float64)
+            emb_norm = np.linalg.norm(current_emb)
+            if emb_norm > 0:
+                current_emb = current_emb / emb_norm
+
+            facial_area = face_data.get("facial_area", {})
+            face_quality = 0.5
+            if facial_area:
+                face_quality = compute_face_quality(img, [
+                    facial_area.get("x", 0), facial_area.get("y", 0),
+                    facial_area.get("w", 0), facial_area.get("h", 0)
+                ])
+
+            if face_quality < QUALITY_MIN:
+                print(f"Face {idx+1}: Skipped (quality={face_quality:.2f})")
                 unknown_faces += 1
                 continue
-            
-            current_emb = np.array(current_emb)
-            
-            distances = 1 - np.dot(all_embeddings, current_emb) / (
-                np.linalg.norm(all_embeddings, axis=1) * np.linalg.norm(current_emb) + 1e-8
-            )
-            
+
+            # Cosine similarity
+            cos_similarities = np.dot(all_embeddings, current_emb)
+            distances = 1 - cos_similarities
+
             sorted_indices = np.argsort(distances)
-            
             best_idx = sorted_indices[0]
-            best_distance = distances[best_idx]
+            best_distance = float(distances[best_idx])
             best_match = usn_list[best_idx]
-            
-            second_idx = sorted_indices[1] if len(sorted_indices) > 1 else None
-            second_distance = distances[second_idx] if second_idx is not None else 1.0
-            second_match = usn_list[second_idx] if second_idx is not None else None
-            
-            face_confidence = faces_data.get(f'face_{i}', {}).get('confidence', 0.8)
-            adaptive_threshold = calculate_adaptive_threshold(face_confidence, best_distance)
-            
-            separation = second_distance - best_distance if second_idx is not None else 0.15
-            
-            if best_distance < adaptive_threshold and separation > 0.05:
-                verified, verify_conf = verify_match(current_emb, known_embeddings, best_match, BASE_THRESHOLD)
-                
-                if verified:
+
+            # Check separation
+            if len(sorted_indices) > 1:
+                # Find best match that is NOT the same USN
+                second_distance = float(distances[sorted_indices[1]])
+                for si in sorted_indices[1:]:
+                    if usn_list[si] != best_match:
+                        second_distance = float(distances[si])
+                        break
+            else:
+                second_distance = 1.0
+
+            separation = second_distance - best_distance
+
+            print(f"Face {idx+1}: Best={best_match} dist={best_distance:.4f} sep={separation:.4f} quality={face_quality:.2f}")
+
+            # Match criteria — ALL must pass:
+            # 1. Distance below threshold
+            # 2. Separation above minimum
+            # 3. This USN hasn't been matched yet from a better detection
+            # 4. Confidence above minimum
+            temp_confidence = calculate_confidence(best_distance, separation, face_quality, 1)
+
+            is_match = (
+                best_distance < BASE_THRESHOLD and
+                separation > SEPARATION_THRESHOLD and
+                temp_confidence >= CONFIDENCE_MIN
+            )
+
+            if is_match:
+                # If this USN was already matched, only replace if this detection is better
+                already_matched = False
+                for fr in face_results:
+                    if fr['usn'] == best_match:
+                        already_matched = True
+                        if best_distance < fr['distance']:
+                            fr['distance'] = best_distance
+                            fr['separation'] = separation
+                            fr['quality'] = face_quality
+                            fr['count'] += 1
+                        break
+
+                if not already_matched:
                     face_results.append({
-                        "usn": best_match, 
-                        "distance": round(best_distance, 3),
-                        "threshold_used": round(adaptive_threshold, 3),
-                        "confidence_score": round(face_confidence, 3),
-                        "verified": True,
-                        "separation": round(separation, 3)
+                        "usn": best_match,
+                        "distance": best_distance,
+                        "separation": separation,
+                        "quality": face_quality,
+                        "count": 1
                     })
+                    matched_usns.add(best_match)
+                    print(f"  -> MATCHED {best_match} (conf={temp_confidence:.3f})")
             else:
                 unknown_faces += 1
+                reason = "distance" if best_distance >= BASE_THRESHOLD else (
+                    "separation" if separation <= SEPARATION_THRESHOLD else "confidence")
+                print(f"  -> Unknown ({reason})")
 
-        usn_scores = {}
-        for result in face_results:
-            usn = result['usn']
-            if usn not in usn_scores:
-                usn_scores[usn] = []
-            usn_scores[usn].append(result['distance'])
-
-        for usn, distances in usn_scores.items():
-            avg_distance = sum(distances) / len(distances)
-            confidence = max(0, 1 - avg_distance * 3)
-            
-            consistency_bonus = min(0.1, len(distances) * 0.02)
-            confidence = min(1.0, confidence + consistency_bonus)
-            
-            recognized_usns.append({"usn": usn, "confidence": round(confidence, 3)})
+        # Build final results
+        for fr in face_results:
+            confidence = calculate_confidence(
+                fr['distance'], fr['separation'], fr['quality'], fr['count']
+            )
+            recognized_usns.append({
+                "usn": fr['usn'],
+                "confidence": round(confidence, 3),
+                "distance": round(fr['distance'], 4),
+                "detections": fr['count']
+            })
 
         recognized_usns.sort(key=lambda x: x['confidence'], reverse=True)
 
         all_students = load_all_students()
         student_dict = {s['usn']: s.get('name', 'Unknown') for s in all_students}
-        
         recognized_usn_set = {r['usn'] for r in recognized_usns}
-        
-        present_students = []
+
         for r in recognized_usns:
             name = student_dict.get(r['usn'], 'Unknown')
-            present_students.append({"usn": r['usn'], "name": name, "confidence": r['confidence']})
-        
-        absent_students = []
+            present_students.append({
+                "usn": r['usn'], "name": name,
+                "confidence": r['confidence'],
+                "distance": r.get('distance', 0),
+                "detections": r.get('detections', 1)
+            })
+
         for usn, name in student_dict.items():
             if usn not in recognized_usn_set:
                 absent_students.append({"usn": usn, "name": name})
 
-        conf = 0.85 if len(recognized_usns) > 0 else 0.0
-        liveness = {
-            "is_live": True,
-            "confidence": conf,
-            "reason": f"Ensemble ArcFace - {total_faces} faces, {ENSEMBLE_RUNS} runs"
-        }
+        liveness = check_liveness(image_path)
 
     except Exception as e:
+        import traceback
+        print(f"Recognition error: {e}")
+        traceback.print_exc()
         return {
-            "recognized_students": recognized_usns,
-            "total_faces": total_faces,
-            "unknown_faces": unknown_faces,
-            "liveness": liveness,
-            "error": str(e)
+            "recognized_students": recognized_usns, "total_faces": total_faces,
+            "unknown_faces": unknown_faces, "liveness": liveness, "error": str(e)
         }
 
     return {
@@ -310,9 +350,18 @@ def run_recognition_pipeline(image_path: str):
         "total_registered": len(all_students),
         "present_count": len(present_students),
         "absent_count": len(absent_students),
-        "improvements": {
-            "ensemble_runs": ENSEMBLE_RUNS,
-            "adaptive_threshold": True,
-            "base_threshold": BASE_THRESHOLD
-        }
     }
+
+
+def load_all_embeddings_db():
+    """Load all embeddings from MongoDB and normalize."""
+    db_embeddings = load_all_embeddings()
+    embeddings_dict = {}
+    for s in db_embeddings:
+        if s.get('embedding') and len(s['embedding']) > 0:
+            emb = np.array(s['embedding'], dtype=np.float64)
+            norm = np.linalg.norm(emb)
+            if norm > 0:
+                emb = emb / norm
+            embeddings_dict[s['usn']] = emb
+    return embeddings_dict

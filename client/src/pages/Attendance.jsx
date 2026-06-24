@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import Webcam from 'react-webcam';
-import { Camera, Upload, Users } from 'lucide-react';
+import { Camera, Upload, Users, AlertCircle } from 'lucide-react';
 import api from '../api';
+import { dataURLtoFile } from '../utils/helpers';
 
 const Attendance = () => {
   const [loading, setLoading] = useState(false);
@@ -9,6 +10,7 @@ const Attendance = () => {
   const [error, setError] = useState('');
   const [classId, setClassId] = useState('CSE-A');
   const [mode, setMode] = useState('upload');
+  const [cameraError, setCameraError] = useState(false);
   const webcamRef = useRef(null);
 
   const submitImage = async (file) => {
@@ -30,19 +32,6 @@ const Attendance = () => {
     }
   };
 
-  const dataURLtoFile = (dataurl, filename) => {
-    const arr = dataurl.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    const bytes = new Uint8Array(bstr.length);
-
-    for (let i = 0; i < bstr.length; i++) {
-      bytes[i] = bstr.charCodeAt(i);
-    }
-
-    return new File([bytes], filename, { type: mime });
-  };
-
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -61,10 +50,10 @@ const Attendance = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Attendance Capture</h1>
-          <p className="text-slate-500 text-sm">Mark attendance via image upload</p>
+          <p className="text-slate-500 text-sm">Mark attendance via image upload or live camera</p>
         </div>
         <input
           type="text"
@@ -94,7 +83,7 @@ const Attendance = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Upload Card */}
         {mode === 'upload' ? (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center min-h-[300px] border-dashed">
@@ -111,42 +100,61 @@ const Attendance = () => {
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <div className="rounded-2xl overflow-hidden bg-slate-900 aspect-video">
-              <Webcam
-                ref={webcamRef}
-                audio={false}
-                screenshotFormat="image/jpeg"
-                className="w-full h-full object-cover"
-                videoConstraints={{
-                  width: 640,
-                  height: 480,
-                  facingMode: 'user'
-                }}
-                onUserMedia={() => console.log('Camera started')}
-                onUserMediaError={(err) => console.error('Camera error:', err)}
-              />
+              {!cameraError ? (
+                <Webcam
+                  ref={webcamRef}
+                  audio={false}
+                  screenshotFormat="image/jpeg"
+                  className="w-full h-full object-cover"
+                  videoConstraints={{
+                    width: 640,
+                    height: 480,
+                    facingMode: 'user'
+                  }}
+                  onUserMediaError={(err) => {
+                    console.error('Camera error:', err);
+                    setCameraError(true);
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                  <Camera className="w-12 h-12 mb-2" />
+                  <p className="text-sm font-medium">Camera access denied</p>
+                  <button onClick={() => setMode('upload')} className="mt-2 text-purple-600 text-sm underline">
+                    Use file upload instead
+                  </button>
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={handleWebcamCapture}
-              disabled={loading}
-              className="mt-4 inline-flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
-            >
-              <Camera className="w-4 h-4" />
-              Capture Attendance
-            </button>
+            {!cameraError && (
+              <button
+                type="button"
+                onClick={handleWebcamCapture}
+                disabled={loading}
+                className="mt-4 inline-flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                <Camera className="w-4 h-4" />
+                Capture Attendance
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Results Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mt-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <div className="flex items-center space-x-2 mb-4">
           <Users className="w-5 h-5 text-slate-500" />
           <h2 className="text-lg font-semibold text-slate-800">Results {loading && '...'}</h2>
         </div>
-        
-        {error && <p className="text-red-500">{error}</p>}
-        
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm mb-4">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {results ? (
           <div>
             <p className="mb-2 text-slate-700">Total: {results.summary.total} | Present: <span className="text-green-600 font-bold">{results.summary.present}</span> | Absent: <span className="text-red-600 font-bold">{results.summary.absent}</span></p>
@@ -156,7 +164,22 @@ const Attendance = () => {
                 Liveness: {results.summary.liveness.reason} ({Math.round((results.summary.liveness.confidence || 0) * 100)}%)
               </p>
             )}
-            <p className="text-sm text-slate-500">Attendance saved successfully!</p>
+
+            {results.absentStudents && results.absentStudents.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold text-red-600 mb-2">Absent Students ({results.absentStudents.length})</h3>
+                <div className="flex flex-wrap gap-2">
+                  {results.absentStudents.map((student) => (
+                    <span key={student.usn} className="inline-flex items-center gap-1 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium border border-red-100">
+                      {student.name}
+                      <span className="text-red-400">({student.usn})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="mt-4 text-sm text-slate-500">Attendance saved successfully!</p>
           </div>
         ) : (
           <div className="flex justify-center items-center py-12 text-slate-400">

@@ -1,4 +1,4 @@
-import { createContext, useState, useContext } from 'react';
+import { createContext, useState, useContext, useCallback } from 'react';
 import api from '../api';
 
 const AttendanceContext = createContext();
@@ -7,23 +7,21 @@ const AttendanceContext = createContext();
 export const useAttendance = () => useContext(AttendanceContext);
 
 export const AttendanceProvider = ({ children }) => {
-  const [attendanceData] = useState([]);
-  const [students] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     setLoading(true);
     try {
       const { data: summary } = await api.get('/reports/summary');
       const { data: daily } = await api.get('/reports/daily');
 
-      const presentToday = daily.records.reduce(
-        (sum, record) => sum + record.presentStudents.length,
+      const presentToday = (daily.records || []).reduce(
+        (sum, record) => sum + (record.presentStudents?.length || 0),
         0
       );
-      const absentToday = daily.records.reduce(
-        (sum, record) => sum + record.absentStudents.length,
+      const absentToday = (daily.records || []).reduce(
+        (sum, record) => sum + (record.absentStudents?.length || 0),
         0
       );
 
@@ -39,11 +37,9 @@ export const AttendanceProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const value = {
-    attendanceData,
-    students,
     loading,
     error,
     fetchDashboardStats,

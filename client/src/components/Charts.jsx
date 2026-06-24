@@ -21,7 +21,7 @@ const Charts = ({ data = [], type = 'bar' }) => {
             const presentHeight = (d.present / maxVal) * 100;
             const absentHeight = (d.absent / maxVal) * 100;
             return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group">
+              <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
                 {/* Tooltip */}
                 <div className="opacity-0 group-hover:opacity-100 absolute -mt-10 bg-slate-800 text-white text-xs rounded-lg px-2 py-1 pointer-events-none z-10 whitespace-nowrap">
                   Present: {d.present} | Absent: {d.absent}

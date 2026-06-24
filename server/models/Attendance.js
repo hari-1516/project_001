@@ -9,6 +9,10 @@ const attendanceSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  time: {
+    type: String,
+    default: () => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  },
   presentStudents: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student'
@@ -35,5 +39,7 @@ const attendanceSchema = new mongoose.Schema({
     ref: 'User'
   }
 });
+
+attendanceSchema.index({ date: 1, classId: 1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

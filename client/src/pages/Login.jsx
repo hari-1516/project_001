@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { KeyRound, Mail, ArrowRight, AlertCircle, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { KeyRound, Mail, ArrowRight, AlertCircle, UserPlus, Eye, EyeOff, CheckCircle } from 'lucide-react';
 
 const Login = () => {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -35,6 +35,7 @@ const Login = () => {
           setSuccess('Account created! You can now sign in.');
           setMode('login');
           setName('');
+          setEmail('');
           setPassword('');
         } else {
           setError(result.message || 'Registration failed');
@@ -50,9 +51,9 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 relative overflow-hidden">
       {/* Decorative Background */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob" />
-      <div className="absolute top-[20%] right-[-10%] w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000" />
-      <div className="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000" />
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" />
+      <div className="absolute top-[20%] right-[-10%] w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDelay: '2s' }} />
+      <div className="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDelay: '4s' }} />
 
       <div className="w-full max-w-md relative z-10 px-4">
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/20">
@@ -101,8 +102,9 @@ const Login = () => {
 
             {/* Success Message */}
             {success && (
-              <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
-                ✅ {success}
+              <div className="mb-4 flex items-start gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
+                <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{success}</span>
               </div>
             )}
 
